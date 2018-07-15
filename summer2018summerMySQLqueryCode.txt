@@ -1,0 +1,321 @@
+-- determine baseline  individual demographics
+SELECT pc.participantID, weight, height, gender,
+	ROUND(weight / ((height / 100) * (height / 100)), 1) AS BMI,
+    FLOOR((DATEDIFF(dateOfStudyEntry, dateOfBirth)) / 365) AS age
+FROM participant_constants pc
+	LEFT JOIN participant_baseline_demographics pbd
+		ON pc.participantID = pbd.participantID;
+		
+-- determine baseline average demographics
+SELECT gender, COUNT(*) AS 'number of participants',
+	ROUND(AVG(weight / ((height / 100) * (height / 100))), 1) AS 'average_BMI',
+	ROUND(std(weight / ((height / 100) * (height / 100))), 1) AS 'SD_BMI',
+    ROUND(AVG(FLOOR((DATEDIFF(dateOfStudyEntry, dateOfBirth)) / 365)), 1) AS 'average_age',
+    ROUND(STD(FLOOR((DATEDIFF(dateOfStudyEntry, dateOfBirth)) / 365)), 1) AS 'SD_age'
+FROM participant_constants 
+	JOIN participant_baseline_demographics
+		USING(participantID)
+GROUP BY gender WITH ROLLUP;
+
+-- bmd for statin and no statin users
+SELECT participantIDyr10, gender,
+	FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) + 10 AS 'age',
+    meanBMD_L1_to_L4, femoralNeckBMD, totalHipBMD,
+    wardsTriangleBMD, trochanterBMD,
+    t_value_spine, t_value_femoral_neck, t_value_total_hip,
+	CASE
+		WHEN participantIDyr10 IN
+        (SELECT participantIDyr10statins
+        FROM year10statins)
+			THEN 'y'
+		WHEN participantIDyr10 NOT IN
+        (SELECT participantIDyr10statins
+        FROM year10statins)
+			THEN 'n'
+	END AS 'statin_user'
+FROM participant_year10_demographics p10
+	LEFT JOIN year10statins s
+		ON p10.participantIDyr10 = s.participantIDyr10statins
+	JOIN year10_bmd m
+		ON p10.participantIDyr10 = m.participantIDyear10BMD
+	JOIN participant_constants pc
+		ON p10.participantIDyr10 = pc.participantID;
+		
+-- bmd and statin potency
+SELECT participantIDyr10, gender,
+	FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) + 10 AS 'age',
+    meanBMD_L1_to_L4, femoralNeckBMD, totalHipBMD,
+    wardsTriangleBMD, trochanterBMD,
+	CASE
+		WHEN statin LIKE '%lipitor%'
+			THEN 'high_potency'
+		WHEN statin LIKE '%atorvastatin%'
+			THEN 'high_potency'
+		WHEN statin LIKE '%zocor%'
+			THEN 'high_potency'
+		WHEN statin LIKE '%lovastatin%'
+			THEN 'low_potency'
+		WHEN statin LIKE '%simvastatin%'
+			THEN 'high_potency'
+		WHEN statin LIKE '%crestor%'
+			THEN 'high_potency'
+		WHEN statin LIKE '%fluvastatin%'
+			THEN 'low_potency'
+		WHEN statin LIKE '%prevastatin%'
+			THEN 'medium_potency'
+		WHEN statin LIKE '%lescol%'
+			THEN 'low_potency'
+		WHEN statin LIKE '%pravastatin%'
+			THEN 'medium_potency'
+		WHEN statin LIKE '%suvastatin%'
+			THEN 'high_potency'
+		WHEN statin IS NULL
+			THEN 'no_statin'
+	END AS 'statin_type'
+FROM participant_year10_demographics p10
+	LEFT JOIN year10statins s
+		ON p10.participantIDyr10 = s.participantIDyr10statins
+	JOIN year10_bmd m
+		ON p10.participantIDyr10 = m.participantIDyear10BMD
+	JOIN participant_constants pc
+		ON p10.participantIDyr10 = pc.participantID;
+		
+-- eliminate duplicate values from query result
+SELECT participantIDdiabetes, age_at_diagnosis
+FROM diabetesdiagnosedduringstudy
+WHERE participantIDdiabetes NOT IN
+	(SELECT participantIDdiabetes
+    FROM diabetesdiagnosedduringstudy
+    GROUP BY participantIDdiabetes
+    HAVING COUNT(*) > 1);
+	
+-- blood work by calcification grouping for over 55 year olds
+SELECT IDfaac24yr5, gender,
+	FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) + 10 'age_at_yr10',
+    CASE
+		WHEN F_AAC24_yr5 = 0
+			THEN 'n'
+		ELSE 'y'
+	END AS 'calcification',
+    BAPng_per_mL, CTXng_per_mL, 25OHDnM,
+    albumin_mg_per_ml, Estradiol_pg_per_mL,
+    insulin_microIU_per_mL, testosterone_ng_per_mL,
+    igf1_ng_per_mL, pth_pg_per_mL, calcium_mM,
+    creatinine_microM, glucose_mM,
+    phosphate_mM, urea_mM
+FROM yr5faac24 b
+	JOIN participant_constants pc
+		ON b.IDfaac24yr5 = pc.participantID
+	JOIN montreal_bloodwork mb
+		ON b.IDfaac24yr5 = mb.participantIDblood
+WHERE FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) > 55;
+
+-- blood work year 10 - means
+SELECT gender, ROUND(AVG(BAPng_per_ml), 1), ROUND(AVG(CTXng_per_mL), 3), ROUND(AVG(25OHDnM), 1), 
+		ROUND(AVG(albumin_mg_per_ml), 1),
+	ROUND(AVG(Estradiol_pg_per_mL), 1), ROUND(AVG(insulin_microIU_per_mL), 1), ROUND(AVG(testosterone_ng_per_mL), 1),
+    ROUND(AVG(igf1_ng_per_mL), 1), ROUND(AVG(pth_pg_per_mL), 1), ROUND(AVG(calcium_mM), 1), ROUND(AVG(creatinine_microM), 1),
+    ROUND(AVG(glucose_mM), 1), ROUND(AVG(phosphate_mM), 1), ROUND(AVG(urea_mM), 1),
+    ROUND(STD(BAPng_per_ml), 1), ROUND(STD(CTXng_per_mL), 3), ROUND(STD(25OHDnM), 1), 
+		ROUND(STD(albumin_mg_per_ml), 1),
+	ROUND(STD(Estradiol_pg_per_mL), 1), ROUND(STD(insulin_microIU_per_mL), 1), ROUND(STD(testosterone_ng_per_mL), 1),
+    ROUND(STD(igf1_ng_per_mL), 1), ROUND(STD(pth_pg_per_mL), 1), ROUND(STD(calcium_mM), 1), ROUND(STD(creatinine_microM), 1),
+    ROUND(STD(glucose_mM), 1), ROUND(STD(phosphate_mM), 1), ROUND(STD(urea_mM), 1)
+	FROM montreal_bloodwork mb
+	JOIN participant_constants pc
+		ON mb.participantIDblood = pc.participantID
+	JOIN participant_year10_demographics p10b
+		ON pc.participantID = p10b.participantIDyr10
+GROUP BY gender WITH ROLLUP;
+
+-- muscle frailty age groups
+SELECT participantIDfrailty, 
+ROUND(((TUG1 + TUG2 + TUG3) / 3), 1) AS 'avg_TUG', 
+ROUND(((GRIPr1 + GRIPr2 + GRIPr3) / 3), 1) AS 'avg_right_hand_grip_strength', 
+ROUND(((GRIPl1 + GRIPl2 + GRIPl3) / 3), 1) AS 'avg_left_hand_grip_strength',
+	FLOOR((DATEDIFF(measurementDate, dateOfBirth)) / 365) AS age,
+    gender,
+CASE
+	WHEN FLOOR((DATEDIFF(measurementDate, dateOfBirth)) / 365) < 70
+		THEN 60
+	WHEN FLOOR((DATEDIFF(measurementDate, dateOfBirth)) / 365) < 80
+		THEN 70
+	END AS age_decade
+FROM muscle_frailty mf
+	JOIN participant_constants pc
+		ON pc. participantID = mf.participantIDfrailty
+	JOIN participant_year16_demographics p16d
+		ON pc. participantID = p16d.participantIDyr16
+WHERE arms_to_do_TUG = 'N' AND
+	aid_to_do_TUG = 'N';
+	
+-- muscle frailty (TUG and GRIP) update queries
+SELECT * FROM muscle_frailty;
+
+UPDATE muscle_frailty
+SET left_or_right_handed = 'R'
+WHERE left_or_right_handed = '1';
+
+UPDATE muscle_frailty
+SET left_or_right_handed = 'L'
+WHERE left_or_right_handed = '2';
+
+UPDATE muscle_frailty
+SET left_or_right_handed = 'AL'
+WHERE left_or_right_handed = '3';
+
+UPDATE muscle_frailty
+SET arms_to_do_TUG = 'N'
+WHERE arms_to_do_TUG = '0';
+
+UPDATE muscle_frailty
+SET arms_to_do_TUG = 'Y'
+WHERE arms_to_do_TUG = '1';
+
+UPDATE muscle_frailty
+SET aid_to_do_TUG = 'N'
+WHERE aid_to_do_TUG = '0';
+
+UPDATE muscle_frailty
+SET arms_to_do_TUG = 'Y'
+WHERE arms_to_do_TUG = '1';
+	
+-- starting numbers of males and females
+SELECT gender, COUNT(*) AS 'number'
+FROM participant_constants
+GROUP BY gender WITH ROLLUP;
+
+-- % baseline participants taking statins (2.79%)
+SELECT ROUND((COUNT(IDbaselineStatin) / COUNT(participantID)) *100, 2) AS 'percentage_of_baseline participants_taking_statins'
+FROM baseline_statin_use bs
+	RIGHT JOIN participant_constants pc
+		ON bs.IDbaselineStatin = pc.participantID;
+        
+-- % year 5 participants taking statins (11.9%)     
+SELECT ROUND((COUNT(IDstatinsYr5) / COUNT(participantIDyr5)) *100, 2) AS 'percentage_of_year5_participants_taking_statins'
+FROM statinsyear5 bs
+	RIGHT JOIN participant_year5_demographics pc
+		ON bs.IDstatinsYr5 = pc.participantIDyr5;
+
+-- % year 10 participants taking statins (24.83%)     
+SELECT ROUND((COUNT(participantIDyr10statins) / COUNT(participantIDyr10)) *100, 2) AS 'percentage_of_year10_participants_taking_statins'
+FROM year10statins bs
+	RIGHT JOIN participant_year10_demographics pc
+		ON bs.participantIDyr10statins = pc.participantIDyr10;
+		
+-- replace part of data
+SELECT samplecode,
+	REPLACE(samplecode, 'X10', 'X16')
+FROM practicecode;
+
+-- union query prefrail males and females(different pre-frail cut off) BMD by muscle frailty grouping not age
+SELECT participantIDfrailty, 
+	LumbarBMDrawScore16Yr,
+    TotalHipBMDrawScore16Yr, FemoralNeckBMDrawScore16Yr,
+	CASE
+		WHEN ROUND(((GRIPr1 + GRIPr2 + GRIPr3) / 3), 1) > 23.7
+			THEN 'high'
+		WHEN ROUND(((GRIPr1 + GRIPr2 + GRIPr3) / 3), 1) <= 23.7
+			THEN 'low'
+	END AS 'Rgrip',
+	FLOOR((DATEDIFF(dateOfStudyEntry, dateOfBirth)) / 365) + 16 AS age,
+    gender
+FROM muscle_frailty mf
+	JOIN participant_constants pc
+		ON pc. participantID = mf.participantIDfrailty
+	JOIN rawbmdyears10and16 y16
+		ON mf.participantIDfrailty = y16.IDrawBMD
+WHERE arms_to_do_TUG = 'N' AND
+	aid_to_do_TUG = 'N'
+	AND gender = 'f'
+UNION    
+SELECT participantIDfrailty, 
+	LumbarBMDrawScore16Yr,
+    TotalHipBMDrawScore16Yr, FemoralNeckBMDrawScore16Yr,
+	CASE
+		WHEN ROUND(((GRIPr1 + GRIPr2 + GRIPr3) / 3), 1) > 36.2
+			THEN 'high'
+		WHEN ROUND(((GRIPr1 + GRIPr2 + GRIPr3) / 3), 1) <= 36.2
+			THEN 'low'
+	END AS 'Rgrip',
+	FLOOR((DATEDIFF(dateOfStudyEntry, dateOfBirth)) / 365) + 16 AS age,
+    gender
+FROM muscle_frailty mf
+	JOIN participant_constants pc
+		ON pc. participantID = mf.participantIDfrailty
+	JOIN rawbmdyears10and16 r
+		ON mf.participantIDfrailty = r.IDrawBMD
+WHERE arms_to_do_TUG = 'N' AND
+	aid_to_do_TUG = 'N'
+	AND gender = 'm';
+	
+-- decrease mmse score year 5 to 10 statin and non statin users
+SELECT participantIDyr10, gender,
+	FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) + 10 AS 'age_at_y10',
+    ROUND(weight_kg / ((height_cm / 100) * (height_cm / 100)), 1) AS 'BMI_at_y10',
+    CASE
+		WHEN (mmse_score_5 - mmse_score_10) < 0
+			THEN 0
+         WHEN (mmse_score_5 - mmse_score_10) = 0
+			THEN 0   
+		WHEN (mmse_score_5 - mmse_score_10) > 0
+			THEN (mmse_score_5 - mmse_score_10)
+    END AS 'mmse_decrease',
+    CASE
+		WHEN participantIDyr10 NOT IN
+			(SELECT participantIDyr10statins
+            FROM year10statins)
+		THEN 'no_statin'
+        WHEN participantIDyr10 IN
+			(SELECT participantIDyr10statins
+            FROM year10statins)
+		AND participantIDyr10 IN
+			(SELECT IDstatinsYr5
+            FROM statinsyear5)
+            THEN 'statin_y5_and_10'
+        WHEN participantIDyr10 IN
+			(SELECT participantIDyr10statins
+            FROM year10statins)
+		AND participantIDyr10 NOT IN
+			(SELECT IDstatinsYr5
+            FROM statinsyear5)
+            THEN 'statin_yr10'   
+	END AS 'statin_use'
+FROM participant_year10_demographics p10
+	JOIN participant_constants pc
+		ON p10.participantIDyr10 = pc.participantID
+	JOIN mmseyr10 f10
+		ON p10.participantIDyr10 = f10.IDmmse10
+	JOIN mmseyr5 y5
+		ON p10.participantIDyr10 = y5.IDmmse5;
+		
+-- faac24 change year 10 to 16: yr 10 statin and no statin
+SELECT participantIDyr10, gender,
+	FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) + 10 AS 'age_at_y10',
+    ROUND(weight_kg / ((height_cm / 100) * (height_cm / 100)), 1) AS 'BMI_at_y10',
+    CASE
+		WHEN (F_AAC24_yr16 - F_AAC24_yr10) < 0
+			THEN 0
+         WHEN (F_AAC24_yr16 - F_AAC24_yr10) = 0
+			THEN 0   
+		WHEN (F_AAC24_yr16 - F_AAC24_yr10) > 0
+			THEN (F_AAC24_yr16 - F_AAC24_yr10)
+    END AS 'F_AAC24_increase',
+    CASE
+		WHEN participantIDyr10 NOT IN
+			(SELECT participantIDyr10statins
+            FROM year10statins)
+		THEN 'no_statin_yr10'
+        WHEN participantIDyr10 IN
+			(SELECT participantIDyr10statins
+            FROM year10statins)
+			THEN 'statin_yr10'   
+	END AS 'statin_use'
+FROM participant_year10_demographics p10
+	JOIN participant_constants pc
+		ON p10.participantIDyr10 = pc.participantID
+	JOIN yr10faac24 f10
+		ON p10.participantIDyr10 = f10.IDfaac24yr10
+	JOIN yr16faac24 y16
+		ON p10.participantIDyr10 = y16.IDfaac24yr16;
+		
