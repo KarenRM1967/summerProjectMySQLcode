@@ -319,3 +319,283 @@ FROM participant_year10_demographics p10
 	JOIN yr16faac24 y16
 		ON p10.participantIDyr10 = y16.IDfaac24yr16;
 		
+-- smokers and non smokers not taking statins or taking lipophilic or hydrophilic statins
+SELECT participantIDyr10,
+	CASE 
+		WHEN participantIDyr10 IN
+			(SELECT participantIDsmoker
+            FROM smoker
+            WHERE smoked = '1')
+            THEN 'y'
+            WHEN participantIDyr10 IN
+				(SELECT participantIDsmoker
+            FROM smoker
+            WHERE smoked = '0')
+			THEN 'n'
+		END AS 'smoked',
+        CASE
+		WHEN statin LIKE '%lipitor%'
+			THEN 'lipophilic'
+		WHEN statin LIKE '%atorvastatin%'
+			THEN 'lipophilic'
+		WHEN statin LIKE '%zocor%'
+			THEN 'lipophilic'
+		WHEN statin LIKE '%lovastatin%'
+			THEN 'lipophilic'
+		WHEN statin LIKE '%simvastatin%'
+			THEN 'lipophilic'
+		WHEN statin LIKE '%crestor%'
+			THEN 'hydrophilic'
+		WHEN statin LIKE '%fluvastatin%'
+			THEN 'hydrophilic'
+		WHEN statin LIKE '%prevastatin%'
+			THEN 'hydrophilic'
+		WHEN statin LIKE '%lescol%'
+			THEN 'hydrophilic'
+		WHEN statin LIKE '%pravastatin%'
+			THEN 'hydrophilic'
+		WHEN statin LIKE '%suvastatin%'
+			THEN 'hydrophilic'
+		WHEN statin IS NULL
+			THEN 'no_statin'
+	END AS 'statin_type' 
+FROM participant_year10_demographics p10
+	LEFT JOIN year10statins s10
+		ON p10.participantIDyr10 = s10.participantIDyr10statins; 
+		
+-- hypertensive and normotensive particpants taking hydrophilic, lipophilic or no statin at year 10
+SELECT participantIDyr10,
+	CASE 
+		WHEN participantIDyr10 IN
+			(SELECT participantIDhypertension 
+			FROM hypertension_diagnosed_during_study op
+			JOIN participant_constants pc
+				ON op.participantIDhypertension = pc.participantID
+			WHERE (FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) + 10) >= age_at_diagnosis)
+            THEN 'y'
+            WHEN participantIDyr10 NOT IN
+				(SELECT participantIDhypertension 
+				FROM hypertension_diagnosed_during_study op
+					JOIN participant_constants pc
+						ON op.participantIDhypertension = pc.participantID
+				WHERE (FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) + 10) >= age_at_diagnosis)
+			THEN 'n'
+		END AS 'hypertension',
+        CASE
+		WHEN statin LIKE '%lipitor%'
+			THEN 'lipophilic'
+		WHEN statin LIKE '%atorvastatin%'
+			THEN 'lipophilic'
+		WHEN statin LIKE '%zocor%'
+			THEN 'lipophilic'
+		WHEN statin LIKE '%lovastatin%'
+			THEN 'lipophilic'
+		WHEN statin LIKE '%simvastatin%'
+			THEN 'lipophilic'
+		WHEN statin LIKE '%crestor%'
+			THEN 'hydrophilic'
+		WHEN statin LIKE '%fluvastatin%'
+			THEN 'hydrophilic'
+		WHEN statin LIKE '%prevastatin%'
+			THEN 'hydrophilic'
+		WHEN statin LIKE '%lescol%'
+			THEN 'hydrophilic'
+		WHEN statin LIKE '%pravastatin%'
+			THEN 'hydrophilic'
+		WHEN statin LIKE '%suvastatin%'
+			THEN 'hydrophilic'
+		WHEN statin IS NULL
+			THEN 'no_statin'
+	END AS 'statin_type' 
+FROM participant_year10_demographics p10
+	LEFT JOIN year10statins s10
+		ON p10.participantIDyr10 = s10.participantIDyr10statins
+	JOIN participant_constants pc
+		ON p10.participantIDyr10 = pc.participantID;
+		
+-- calculate age and BMI at year 10 and determine if statin user or not
+SELECT participantIDyr10,
+	FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) + 10 AS 'age',
+    ROUND(weight_kg / ((height_cm / 100) * (height_cm / 100)), 1) AS 'BMI',
+    CASE
+		WHEN participantIDyr10 NOT IN
+			(SELECT participantIDyr10statins
+		FROM year10statins)
+        THEN 'n'
+        WHEN participantIDyr10 IN
+			(SELECT participantIDyr10statins
+		FROM year10statins)
+        THEN 'y'
+	END AS 'statin_user'
+FROM participant_year10_demographics p10
+	JOIN participant_constants pc
+		ON p10.participantIDyr10 = pc.participantID;
+
+-- only return BMI and age for participants not using statins at year 10		
+SELECT participantIDyr10,
+	FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) + 10 AS 'age',
+    ROUND(weight_kg / ((height_cm / 100) * (height_cm / 100)), 1) AS 'BMI'
+FROM participant_year10_demographics p10
+	JOIN participant_constants pc
+		ON p10.participantIDyr10 = pc.participantID
+ WHERE participantIDyr10 NOT IN
+    (SELECT participantIDyr10statins
+    FROM year10statins);
+
+-- only return results for females taking statins at year 10	
+SELECT * 
+FROM participant_year10_demographics p10
+	JOIN participant_constants pc
+		ON p10.participantIDyr10 = pc.participantID
+WHERE participantIDyr10 IN
+    (SELECT participantIDyr10statins
+    FROM year10statins)
+    AND gender = 'f';
+
+-- only return result set for smokers not taking statins at year 10	
+SELECT * 
+FROM participant_year10_demographics
+WHERE participantIDyr10 IN
+	(SELECT participantIDsmoker
+	FROM smoker
+    WHERE smoked = 1)
+    AND participantIDyr10 NOT IN
+    (SELECT participantIDyr10statins
+    FROM year10statins);
+
+-- determine both number and percentage of total taking statins at year 10	
+SELECT ROUND((COUNT(participantIDyr10statins) / COUNT(participantIDyr10)) *100, 2) AS 'percentage_of_year10_participants_taking_statins',
+	ROUND((COUNT(participantIDyr10statins) / COUNT(participantIDyr10)), 2) AS 'number_of_year10_participants_taking_statins',
+    COUNT(participantIDyr10statins) AS 'number'
+FROM year10statins bs
+	RIGHT JOIN participant_year10_demographics pc
+		ON bs.participantIDyr10statins = pc.participantIDyr10;
+
+-- determine number of males with a history of kidney stones at year 5 of study		
+SELECT participantIDyr5
+FROM participant_year5_demographics p10
+	JOIN participant_constants pc
+		ON p10.participantIDyr5 = pc.participantID
+WHERE participantIDyr5 IN
+	(SELECT IDkidneyStones
+	FROM kidney_stones_during_course_of_study op
+		JOIN participant_constants pc
+			ON op.IDkidneyStones = pc.participantID
+	WHERE (FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) + 5) >= ageOfKidneyStones)
+	AND gender = 'm';
+
+-- increase in F_AAC24 from year 10 to 16 fof statin users and non variates
+-- with covariates (hypertension, osteoporosis, diabetes, age, gender, smoker) for likelihood to be a statin user	
+SELECT participantIDyr10, gender,
+	FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365) + 10 AS 'age_at_y10',
+    ROUND(weight_kg / ((height_cm / 100) * (height_cm / 100)), 1) AS 'BMI_at_y10',
+    CASE
+		WHEN (F_AAC24_yr16 - F_AAC24_yr10) < 0
+			THEN 0
+         WHEN (F_AAC24_yr16 - F_AAC24_yr10) = 0
+			THEN 0   
+		WHEN (F_AAC24_yr16 - F_AAC24_yr10) > 0
+			THEN (F_AAC24_yr16 - F_AAC24_yr10)
+    END AS 'F_AAC24_increase',
+    CASE
+		WHEN participantIDyr10 NOT IN
+			(SELECT participantIDyr10statins
+            FROM year10statins)
+		THEN 'no_statin_yr10'
+        WHEN participantIDyr10 IN
+			(SELECT participantIDyr10statins
+            FROM year10statins)
+			THEN 'statin_yr10'   
+	END AS 'statin_use',
+    CASE
+		WHEN participantIDyr10 IN
+        (SELECT participantIDdiabetes
+        FROM diabetes_diagnosed_during_study)
+			THEN 'y'
+		WHEN participantIDyr10 NOT IN
+        (SELECT participantIDdiabetes
+        FROM diabetes_diagnosed_during_study)
+			THEN 'n'
+	END AS 'diabetic',
+    CASE
+		WHEN participantIDyr10 IN
+        (SELECT participantIDsmoker
+        FROM smoker
+        WHERE smoked = 1)
+			THEN 'y'
+		WHEN participantIDyr10 IN
+        (SELECT participantIDsmoker
+        FROM smoker
+        WHERE smoked = 0)
+			THEN 'n'
+	END AS 'smoked',
+    CASE
+		WHEN participantIDyr10 IN
+        (SELECT participantIDhypertension
+        FROM hypertension_diagnosed_during_study h
+			JOIN participant_constants pc
+				ON h.participantIDhypertension = pc.participantID
+        WHERE age_at_diagnosis <= FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365))
+			THEN 'y'
+		WHEN participantIDyr10 NOT IN
+        (SELECT participantIDhypertension 
+        FROM hypertension_diagnosed_during_study h
+			JOIN participant_constants pc
+				ON h.participantIDhypertension = pc.participantID
+        WHERE age_at_diagnosis <= FLOOR(DATEDIFF(dateOfStudyEntry, dateOfBirth) / 365))
+			THEN 'n'
+	END AS 'hypertension'
+FROM participant_year10_demographics p10
+	JOIN participant_constants pc
+		ON p10.participantIDyr10 = pc.participantID
+	JOIN yr10faac24 f10
+		ON p10.participantIDyr10 = f10.IDfaac24yr10
+	JOIN yr16faac24 y16
+		ON p10.participantIDyr10 = y16.IDfaac24yr16;
+
+-- calcification for lipophilic statin users only		
+SELECT IDfaac24Yr10, F_AAC24_yr10
+FROM yr10faac24
+WHERE IDfaac24yr10 in
+	(SELECT participantIDyr10statins
+    FROM year10statins
+	WHERE statin LIKE '%lipitor%'
+			OR statin LIKE '%atorvastatin%'
+			OR statin LIKE '%zocor%'
+			OR statin LIKE '%lovastatin%'
+			OR statin LIKE '%simvastatin%'); 
+
+-- hydrophilic statin users' change in calcification from year 10 to 16			
+SELECT IDfaac24Yr10,
+	CASE 
+		WHEN (F_AAC24_yr16 - F_AAC24_yr10) < 0
+			THEN 0
+		WHEN (F_AAC24_yr16 - F_AAC24_yr10) = 0
+			THEN 0
+		WHEN (F_AAC24_yr16 - F_AAC24_yr10) > 0
+			THEN (F_AAC24_yr16 - F_AAC24_yr10)
+      END AS 'increase_FAAC24'      
+FROM yr10faac24 f10
+	JOIN yr16faac24 f16
+		ON f10.IDfaac24yr10 = f16.IDfaac24yr16
+WHERE IDfaac24yr10 IN
+	(SELECT participantIDyr10statins
+    FROM year10statins 
+    WHERE statin LIKE '%crestor%'
+			OR statin LIKE '%fluvastatin%'
+			OR statin LIKE '%prevastatin%'
+			OR statin LIKE '%lescol%'
+			OR statin LIKE '%pravastatin%'
+			OR statin LIKE '%suvastatin%');	
+
+-- calculation of HOMA - insulin resistance - in non diabetics not taking statins			
+SELECT participantIDblood,
+	  ROUND(((glucose_mM * insulin_microIU_per_mL) / 22.5), 2) AS 'HOMA'
+FROM montreal_bloodwork 
+WHERE participantIDblood NOT IN
+	(SELECT participantIDdiabetes
+    FROM diabetes_diagnosed_during_study)
+    AND participantIDblood NOT IN
+        (SELECT participantIDyr10statins
+        FROM year10statins);
+		
